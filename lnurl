@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+
+import argparse
+import codecs
+import asyncio
+import os
+import grpc
+import lightning_pb2 as ln
+import lightning_pb2_grpc as lnrpc
+from aiohttp import web
+import hashlib
+import lnurl
+
+async def main(macaroon, args):
+    def metadata_callback(context, callback):
+        callback([('macaroon', macaroon)], None)
+
+    os.environ["GRPC_SSL_CIPHER_SUITES"] = 'HIGH+ECDSA'
+
+    cert = open(args.lnd_cert, 'rb').read()
+    cert_creds = grpc.ssl_channel_credentials(cert)
+    auth_creds = grpc.metadata_call_credentials(metadata_callback)
+    combo_creds = grpc.composite_channel_credentials(cert_creds, auth_creds)
+
+    async with grpc.aio.secure_channel(args.lnd_host, combo_creds) as channel:
+        metadata_bytes = b"[[\\\"text/plain\\\"Send Sats to Cesar\\\"],[\\\"text/email\\\",\\\"cesar@alanisoft.com\\\"]]"
+        metadata = hashlib.sha256()
+        metadata.update(metadata_bytes)
+        desc = metadata.digest()
+        
+        async def handle_request(request):
+            resp = web.Response(text="{\"callback\":\"%scallback\",\"maxSendable\":%i,\"minSendable\":%i,\"metadata\":\"%s\",\"tag\":\"payRequest\"}" % (args.lnurl,1,1000000,metadata_bytes.decode('UTF-8')))
+            resp.headers['content-type'] = 'application/json'
+            return resp
+        
+        async def handle_callback(request):
+            if not 'amount' in request.query:
+                resp = web.Response(text="{\"status\": \"ERROR\", \"reason\": \"Didn't provide amount in msat.\"}")
+                resp.set_status(400)
+                return resp
+        
+            stub = lnrpc.LightningStub(channel)
+            invoice_req = ln.Invoice(value_msat=int(request.query['amount']), description_hash=desc)
+            invoice = await stub.AddInvoice(invoice_req)
+            resp = web.Response(text="{\"pr\": \"%s\", \"routes\": []}" % invoice.payment_request)
+            resp.headers['content-type'] = 'application/json'
+            return resp
+
+
+        app = web.Application()
+        app.add_routes([web.get('/', handle_request)])
+        app.add_routes([web.get('/callback', handle_callback)])
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, args.host, args.port)      
+        await site.start()
+
+        while True:
+            await asyncio.sleep(3600)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='LNURL Utility Server')
+    parser.add_argument('--lnd-host', dest='lnd_host', action='store', nargs='?', default='localhost:10009', help='the host to connect to')
+    parser.add_argument('--macaroon', dest='macaroon', action='store', nargs='?', default='./app.macaroon', help='the macaroon file with the correct permissions')
+    parser.add_argument('--lnd-cert', dest='lnd_cert', action='store', nargs='?', default='/var/lib/lnd/tls.cert', help='the cert for the lnd instance')
+    parser.add_argument('--port', dest='port', action='store', nargs='?', default=8018, help='the host port to serve from')
+    parser.add_argument('--host', dest='host', action='store', nargs='?', default='localhost', help='the host ip to serve from')
+    parser.add_argument('--lnurl', dest='lnurl', action='store', nargs='?', default='https://lnurl.alanisoft.com/', help='the lnurl to generate')
+    parser.add_argument('--server', dest='server', action='store_true', default=False, help='start the server')
+    args = parser.parse_args()
+    if not args.server:
+        print(lnurl.encode(args.lnurl))
+    else:
+        with open(os.path.expanduser(args.macaroon), 'rb') as f:
+            macaroon_bytes = f.read()
+            macaroon = codecs.encode(macaroon_bytes, 'hex')
+            asyncio.run(main(macaroon, args))

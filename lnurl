@@ -23,13 +23,13 @@ async def main(macaroon, args):
     combo_creds = grpc.composite_channel_credentials(cert_creds, auth_creds)
 
     async with grpc.aio.secure_channel(args.lnd_host, combo_creds) as channel:
-        metadata_bytes = b"[[\\\"text/plain\\\"Send Sats to Cesar\\\"],[\\\"text/email\\\",\\\"cesar@alanisoft.com\\\"]]"
+        metadata_bytes = b'[["text/plain","Send Sats to Cesar"],["text/email","cesar@alanisoft.com"]]'
         metadata = hashlib.sha256()
         metadata.update(metadata_bytes)
         desc = metadata.digest()
         
         async def handle_request(request):
-            resp = web.Response(text="{\"callback\":\"%scallback\",\"maxSendable\":%i,\"minSendable\":%i,\"metadata\":\"%s\",\"tag\":\"payRequest\"}" % (args.lnurl,1,1000000,metadata_bytes.decode('UTF-8')))
+            resp = web.Response(text="{\"callback\":\"%scallback\",\"maxSendable\":%i,\"minSendable\":%i,\"metadata\":\"%s\",\"tag\":\"payRequest\"}" % (args.lnurl,100000000000,1,metadata_bytes.decode('UTF-8').replace('"', '\\"')))
             resp.headers['content-type'] = 'application/json'
             return resp
         

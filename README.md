@@ -27,3 +27,49 @@ lnd $ pip install -r requirements.txt
 ```shell
 lnd $ ./lnurl --server
 ```
+
+# Screenshots
+
+![Screenshot](screenshot.png)
+
+# Production
+
+A sample system d file
+```
+[Unit]
+Description=LND Lightning Address
+Requires=lnd.service
+After=lnd.service
+
+[Service]
+ExecStart=/usr/local/lnurl/.env/bin/python3 /usr/local/lnurl/lnurl --server --macaroon=/usr/local/lnurl/app.macaroon --image-thumb=/usr/local/lnurl/image-thumb.png
+User=www-data
+Group=www-data
+Type=simple
+KillMode=process
+TimeoutSec=180
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+[Unit]
+Description=LND Lightning Address
+Requires=lnd.service
+After=lnd.service
+
+[Service]
+ExecStart=/usr/local/lnurl/.env/bin/python3 /usr/local/lnurl/lnurl --server --macaroon=/usr/local/lnurl/app.macaroon --image-thumb=/usr/local/lnurl/image-thumb.png
+User=www-data
+Group=www-data
+Type=simple
+KillMode=process
+TimeoutSec=180
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+```
+
+It's recommened you host the server behind a nginx, etc.

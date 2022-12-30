@@ -30,7 +30,7 @@ lnd $ ./lnurl --server
 
 # Screenshots
 
-![Screenshot](screenshot.png)
+<img src='screnshot.png' style='width: 150px'/>
 
 # Production
 
